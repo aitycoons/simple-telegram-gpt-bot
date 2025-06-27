@@ -253,3 +253,35 @@ def main():
 
 if __name__ == '__main__':
     main()
+# -----------------------------
+# TTS voice-note helper (OpenAI + pydub)
+# -----------------------------
+import io
+from pydub import AudioSegment
+import telegram
+from openai import AsyncOpenAI
+
+_TTS_VOICE = os.getenv("TTS_VOICE", "alloy")
+
+_oai_client = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
+_tg_bot    = telegram.Bot(os.environ["TELEGRAM_TOKEN"])
+
+async def send_tts(chat_id: int, text: str, voice: str = _TTS_VOICE):
+    """Send `text` as a Telegram voice‑note using OpenAI TTS."""
+    # 1) Generate speech as MP3
+    speech_resp = await _oai_client.audio.speech.create(
+        model="tts-1",
+        input=text,
+        voice=voice,
+        format="mp3",
+    )
+    mp3_bytes = await speech_resp.read()
+
+    # 2) Convert MP3 → OGG/Opus
+    audio = AudioSegment.from_file(io.BytesIO(mp3_bytes), format="mp3")
+    buf = io.BytesIO()
+    audio.export(buf, format="ogg", codec="libopus")
+    buf.seek(0)
+
+    # 3) Send as voice-note
+    await _tg_bot.send_voice(chat_id=chat_id, voice=buf)
